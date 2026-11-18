@@ -75,4 +75,5 @@ src/modes/    free-juggle.js (the screen); game mode later
 tools/        build.js (bundle to dist/)
 tests/        node tests/run.js
 ```
-See `CONTEXT.md` for the design and `DECISIONS.md` for what's settled.
+See `CONTEXT.md` for the design, `DECISIONS.md` for what's settled, `ROADMAP.md` for what's next
+and `CLAUDE.md` for working on it with Claude Code.

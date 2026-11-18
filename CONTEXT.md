@@ -2,7 +2,7 @@
 
 A sandbox juggling simulator for the browser. You control the throws yourself; there's no score
 in Free Juggle. Exploring control schemes (keyboard and game controller) is a big part of it.
-Passing is out of scope.
+Passing: planned as two-player online passing (four-handed siteswap); see ROADMAP.md.
 
 ## Where things come from
 - `archive/` holds the three original single-file sims, unchanged:
