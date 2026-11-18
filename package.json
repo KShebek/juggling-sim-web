@@ -1,0 +1,12 @@
+{
+  "name": "juggling-sims",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sandbox juggling simulator: shared core engine and selectable modes.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.js",
+    "serve": "npx --yes serve .",
+    "build": "node tools/build.js"
+  }
+}

@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Juggling Sim 2 — You control the timing</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#13151a;--panel:#1c1f26;--line:#2b303a;--text:#e6e8ec;--dim:#8a93a3;--acc:#ffb347;--ok:#5ad19a;--bad:#ff6b6b;--hold:#7fb2ff;--R:#ff8fa3;--L:#6fb7ff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}
+#app{display:grid;grid-template-columns:1fr 310px;height:100vh}
+#stage{position:relative;min-width:0;min-height:0}
+#cv{display:block;width:100%;height:100%}
+#side{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:12px 14px 20px}
+h1{font-size:15px;margin:0 0 2px}
+.sub{color:var(--dim);font-size:12px;margin-bottom:10px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:16px 0 6px;font-weight:600}
+.row{display:flex;gap:6px}
+button{background:#2a2f3a;color:var(--text);border:1px solid #3a404c;border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+button:hover{background:#333a47}
+.btn-wide{flex:1}
+select{background:#2a2f3a;color:var(--text);border:1px solid #3a404c;border-radius:6px;padding:3px 6px;font:inherit}
+label.sl{display:grid;grid-template-columns:92px 1fr 44px;align-items:center;gap:8px;margin:4px 0}
+label.sl span.v{text-align:right;font-variant-numeric:tabular-nums;color:var(--acc)}
+input[type=range]{width:100%;accent-color:var(--acc)}
+label.ck{display:flex;align-items:center;gap:8px;margin:3px 0;cursor:pointer}
+.legend{color:var(--dim);font-size:11px;margin-top:4px}
+#ballBtns button{flex:1;padding:6px 0;font-weight:700}
+#ballBtns button.on{background:#3a3320;border-color:var(--acc);color:var(--acc)}
+#modeBox{border-radius:8px;padding:8px 10px;background:#23262d;margin-top:10px}
+#modeBox b{font-size:14px}
+.mono{font-family:ui-monospace,Consolas,monospace}
+table.keys{width:100%;border-collapse:collapse;font-size:12px}
+table.keys td{padding:2px 0;vertical-align:top}
+table.keys td:first-child{color:var(--acc);white-space:nowrap;padding-right:10px;font-family:ui-monospace,Consolas,monospace}
+.kb{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0}
+.kb div{background:#23262d;border-radius:6px;padding:6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6}
+.kb div i{font-style:normal;color:var(--dim);font-family:system-ui;font-size:11px}
+#padStatus{color:var(--dim)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="side">
+    <h1>Sim 2 · You control the timing</h1>
+    <div class="sub">Starts on autopilot. Your first throw takes over, and from then on nothing is thrown unless you throw it. A drop resets to autopilot.</div>
+    <div class="row"><button id="bPause" class="btn-wide">Pause (Space)</button><button id="bReset" class="btn-wide">Reset (Backspace)</button></div>
+    <div id="modeBox"></div>
+
+    <h2>Balls</h2>
+    <div class="row" id="ballBtns"></div>
+    <div class="legend">Autopilot juggles all N's (3 → cascade, 4 → fountain). Keys: <span class="mono">-</span> / <span class="mono">=</span></div>
+
+    <h2>Settings</h2>
+    <label class="sl">Tempo<input type="range" id="sTempo" min="1.5" max="5" step="0.1"><span class="v" id="vTempo"></span></label>
+    <label class="sl">Dwell<input type="range" id="sDwell" min="0.2" max="0.9" step="0.05"><span class="v" id="vDwell"></span></label>
+    <label class="sl">Gravity<input type="range" id="sGrav" min="1" max="20" step="0.1"><span class="v" id="vGrav"></span></label>
+    <label class="sl">Slow-mo<input type="range" id="sSlow" min="0.1" max="1" step="0.05"><span class="v" id="vSlow"></span></label>
+    <div class="legend">Tempo sets the autopilot's beat and how high each siteswap value goes: a throw of value v flies for (v − dwell) beats. Your own timing is free.</div>
+
+    <h2>Visual aids</h2>
+    <label class="ck"><input type="checkbox" id="cLadder"> Ladder diagram (time)</label>
+    <label class="ck"><input type="checkbox" id="cBeat"> Beat guide (keeps the autopilot's beat)</label>
+    <label class="ck"><input type="checkbox" id="cMetro"> Metronome click</label>
+    <label class="ck"><input type="checkbox" id="cHud"> Readout on stage</label>
+    <label class="ck"><input type="checkbox" id="cZoom"> Auto-zoom to fit high throws</label>
+    <label class="ck"><input type="checkbox" id="cMid"> Mid-air collisions</label>
+    <label class="ck"><input type="checkbox" id="cDials"> Stick dials on stage (gamepad)</label>
+    <label class="ck"><input type="checkbox" id="cRumble"> Rumble (gamepad)</label>
+
+    <h2>Controls</h2>
+    <div class="legend" style="color:var(--text);margin-bottom:6px">Every input throws <b>now</b>. The hand needs a ball: a press up to 0.15 s before a catch throws the ball as soon as it's caught. A hand can hold 2 balls; a third one arriving drops.</div>
+    <b>A · Number keys</b> <span style="color:var(--dim)">(hands alternate R, L, R…)</span>
+    <table class="keys">
+      <tr><td>1 3 4 5 6 7</td><td>throw that value now</td></tr>
+      <tr><td>2</td><td>hold: the hand keeps its ball, the turn passes</td></tr>
+      <tr><td>0</td><td>empty turn (a ball in that hand drops)</td></tr>
+    </table>
+    <div style="margin-top:8px"><b>B · Split hands</b> <span style="color:var(--dim)">(throw now from that hand)</span></div>
+    <div class="kb">
+      <div><i>Left hand</i><br>Q W E = 5 6 7<br>A S D F = 1 2 3 4<br>Z = 0</div>
+      <div><i>Right hand</i><br>P O I = 5 6 7<br>; L K J = 1 2 3 4<br>/ = 0</div>
+    </div>
+    <div style="margin-top:8px"><b>C · Gamepad: aim, then throw</b></div>
+    <table class="keys">
+      <tr><td>L / R stick</td><td>aim that hand's throw with the dial. Stick centred = the ball count (3 with 3 balls).</td></tr>
+      <tr><td>LT / RT</td><td>throw now from that hand (LB / RB work too)</td></tr>
+      <tr><td>Start / Back</td><td>pause / reset</td></tr>
+    </table>
+    <div class="legend" style="color:var(--text)">Dial: toward the other hand = crossing: down-in <b>1</b> · in <b>3</b> · up-in <b>5</b> · up <b>7</b>. Outward = same hand: up-out <b>6</b> · out <b>4</b> · down-out <b>2</b>. Down = <b>0</b>.</div>
+    <div id="padStatus" style="margin-top:6px">No gamepad detected. Press a button on it.</div>
+    <table class="keys" style="margin-top:8px"><tr><td>Space / ⌫</td><td>pause / reset</td></tr><tr><td>- / =</td><td>fewer / more balls</td></tr></table>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   Juggling Sim 2: free timing.
+   - Simulation runs in continuous time (seconds). Throws happen when a
+     throw command arrives; it doesn't care who sent it.
+   - The autopilot is just another input source: it sends perfect on-beat
+     throws of value N until the player's first throw, then switches off.
+   - Catching is automatic; physics decides whether it works.
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const R = 0, L = 1;
+const HAND_NAME = ['R', 'L'];
+const handOfBeat = b => (((b % 2) + 2) % 2 === 0 ? R : L);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const MAX_THROW = 7;
+
+const settings = {
+  balls: 3, tempo: 3.0, dwell: 0.6, gravity: 9.81, slowmo: 1,
+  showLadder: true, beatGuide: false, metronome: false, showHud: true, autoZoom: true,
+  midair: false, showDials: true, rumble: true
+};
+const G = { inX: 0.10, outX: 0.30, lift: 0.05, dip: 0.10, floorY: -0.95, viewBottom: -1.05, ballR: 0.035,
+  approach: 0.16,          // s before arrival that the hand moves out to the catch spot
+  buffer: 0.15,            // s a press waits for a ball that's about to land
+  catchGapBeats: 0.35,     // two arrivals in one hand closer than this (in beats) = clash
+  midairDist: 0.05,        // m centre distance that counts as a mid-air hit
+  midairMinY: 0.18,        // m: below this (near the hands) mid-air hits are ignored
+  handCap: 2 };
+const COLORS = ['#ffb347', '#6fe0c0', '#c792ff', '#ff6b8b', '#7fb2ff', '#e6e36a', '#ff9a5a'];
+const beatSec = () => 1 / settings.tempo;
+const throwPt = h => ({ x: (h === R ? 1 : -1) * G.inX, y: 0 });
+const catchPt = h => ({ x: (h === R ? 1 : -1) * G.outX, y: 0 });
+
+/* ---------------- Simulation state ---------------- */
+const sim = {
+  time: 0, paused: false, mode: 'auto',
+  apPos: -0.5,              // autopilot / beat-guide clock, in beats
+  balls: [], hands: [], history: [], resetTimes: [],
+  pending: [null, null], lastThrowHand: L,
+  resetAt: null, fade: 1, nextId: 0, msg: null, beatFlash: [-9, -9]
+};
+function mkHand(h) { const side = h === R ? 1 : -1; return { h, side, x: side * 0.2, y: 0, vx: 0, vy: 0, held: [], lastCatchT: -99 }; }
+
+function flash(text, color) { sim.msg = { text, color: color || '#ffb347', t: performance.now() }; }
+
+function pushHistory(e) { sim.history.push(e); if (sim.history.length > 120) sim.history.splice(0, sim.history.length - 120); return e; }
+
+function launchBall(b, h, v, t0, from) {
+  const to = v % 2 === 1 ? 1 - h : h;
+  const T = Math.max(0.06, (v - settings.dwell) * beatSec());
+  const cp = catchPt(to);
+  Object.assign(b, { state: 'air', from: h, to, v, t0, T, t1: t0 + T, x0: from.x, y0: from.y, x1: cp.x, y1: cp.y });
+  b.hist = pushHistory({ t0, t1: t0 + T, hand: h, toHand: to, v, kind: 'throw', src: b.src });
+}
+
+/* Reset: everyone back on autopilot, mid-pattern, as if it had been running. */
+function resetAutopilot(first) {
+  const N = settings.balls, B = beatSec(), d = settings.dwell;
+  sim.mode = 'auto';
+  sim.balls = []; sim.hands = [mkHand(R), mkHand(L)];
+  sim.pending = [null, null];
+  sim.apPos = -0.5;
+  if (first) { sim.history = []; sim.resetTimes = []; } else sim.resetTimes.push(sim.time);
+  for (const e of sim.history) if (e.t1 > sim.time) e.cut = true;
+  for (let k = 0; k < N; k++) {
+    const fromBeat = k - N, h = handOfBeat(fromBeat);
+    const b = { id: sim.nextId++, src: 'auto' };
+    sim.balls.push(b);
+    if (N === 2) { b.state = 'hand'; b.hand = handOfBeat(k); sim.hands[b.hand].held.push(b); continue; }
+    const t0 = sim.time + (fromBeat - sim.apPos) * B;
+    launchBall(b, h, N, t0, throwPt(h));
+    if (b.t1 <= sim.time) { b.state = 'hand'; b.hand = b.to; sim.hands[b.to].held.push(b); sim.hands[b.to].lastCatchT = b.t1; }
+  }
+  for (const hd of sim.hands) { const p = hd.held.length ? throwPt(hd.h) : { x: hd.side * 0.2, y: 0 }; hd.x = p.x; hd.y = p.y; }
+  sim.lastThrowHand = handOfBeat(-1);
+  sim.resetAt = null;
+  sim.fade = first ? 1 : 0;
+}
+
+/* The single entry point for every throw, from any source.
+   v: siteswap value. src: 'auto' | 'keys' | 'split' | 'pad'. */
+function throwCmd(h, v, src, tAt) {
+  if (src !== 'auto' && sim.mode === 'auto') { sim.mode = 'manual'; flash('You have control', '#5ad19a'); }
+  const hd = sim.hands[h];
+  const t0 = tAt === undefined ? sim.time : tAt;
+  sim.lastThrowHand = h;
+  if (v === 2) {                                   // hold: nothing leaves the hand
+    pushHistory({ t0, t1: t0 + 2 * beatSec(), hand: h, toHand: h, v: 2, kind: hd.held.length ? 'hold' : 'empty', src });
+    return true;
+  }
+  if (v === 0) {
+    if (hd.held.length) dropFromHand(hd, 'Dropped (0 with a ball in hand)');
+    else pushHistory({ t0, t1: t0, hand: h, toHand: h, v: 0, kind: 'empty', src });
+    return true;
+  }
+  if (!hd.held.length) {                           // wait briefly for a ball about to land
+    sim.pending[h] = { v, src, until: sim.time + G.buffer };
+    return false;
+  }
+  const b = hd.held.shift();
+  b.src = src;
+  launchBall(b, h, v, t0, { x: hd.x, y: hd.y + 0.02 });
+  hd.vy += 0.8 + v * 0.1;                          // little upward pop of the hand
+  if (src === 'pad') pad.rumble(0.25, 40);
+  return true;
+}
+
+function ballPos(b, t) {
+  if (b.state === 'air') {
+    const s = clamp((t - b.t0) / b.T, 0, 1);
+    return { x: lerp(b.x0, b.x1, s), y: lerp(b.y0, b.y1, s) + 0.5 * settings.gravity * b.T * b.T * s * (1 - s) };
+  }
+  if (b.state === 'hand') {
+    const hd = sim.hands[b.hand], i = hd.held.indexOf(b);
+    return { x: hd.x - hd.side * i * 0.06, y: hd.y + 0.02 + i * 0.015 };
+  }
+  return { x: b.x, y: b.y };
+}
+
+function toDrop(b, vx, vy) {
+  const p = ballPos(b, sim.time);
+  if (b.state === 'hand') { const hd = sim.hands[b.hand]; hd.held.splice(hd.held.indexOf(b), 1); }
+  Object.assign(b, { state: 'drop', x: p.x, y: p.y, vx, vy });
+  if (sim.resetAt === null) sim.resetAt = sim.time + 1.6;
+}
+function airVel(b, t) {
+  const e = 0.004, p1 = ballPos(b, t), p0 = ballPos(b, t - e);
+  return { vx: (p1.x - p0.x) / e, vy: (p1.y - p0.y) / e };
+}
+function dropFromHand(hd, why) {
+  const b = hd.held[0];
+  toDrop(b, hd.side * 0.2, 0);
+  pushHistory({ t0: sim.time, t1: sim.time, hand: hd.h, toHand: hd.h, v: 0, kind: 'drop', src: '' });
+  flash(why, '#ff6b6b');
+}
+
+function arrive(b) {
+  const hd = sim.hands[b.to];
+  const gap = G.catchGapBeats * beatSec();
+  const tooClose = b.t1 - hd.lastCatchT < gap;
+  if (hd.held.length >= G.handCap || tooClose) {
+    const v = airVel(b, b.t1);
+    const p = ballPos(b, b.t1);
+    Object.assign(b, { state: 'drop', x: p.x, y: p.y, vx: v.vx * 0.3 + hd.side * 1.1, vy: Math.abs(v.vy) * 0.3 + 0.7 });
+    if (sim.resetAt === null) sim.resetAt = sim.time + 1.6;
+    if (b.hist) b.hist.kind = 'collide';
+    flash(tooClose ? 'Collision at the catch!' : HAND_NAME[hd.h] + ' hand was full', '#ff6b6b');
+    return;
+  }
+  b.state = 'hand'; b.hand = b.to; hd.held.push(b); hd.lastCatchT = b.t1;
+  const pend = sim.pending[hd.h];
+  if (pend && sim.time <= pend.until) { sim.pending[hd.h] = null; throwCmd(hd.h, pend.v, pend.src); }
+}
+
+function midairCheck() {
+  const air = sim.balls.filter(b => b.state === 'air');
+  for (let i = 0; i < air.length; i++) for (let j = i + 1; j < air.length; j++) {
+    const a = air[i], c = air[j];
+    if (a.v <= 1 || c.v <= 1) continue;            // 1s are passed underneath, in front of the pattern
+    const pa = ballPos(a, sim.time), pc = ballPos(c, sim.time);
+    if (pa.y < G.midairMinY || pc.y < G.midairMinY) continue;   // near the hands, balls pass at different depths
+    const dx = pa.x - pc.x, dy = pa.y - pc.y;
+    if (dx * dx + dy * dy < G.midairDist * G.midairDist) {
+      const va = airVel(a, sim.time), vc = airVel(c, sim.time);
+      toDrop(a, vc.vx * 0.5 + dx * 8, vc.vy * 0.5 + dy * 8);   // swap-ish and push apart
+      toDrop(c, va.vx * 0.5 - dx * 8, va.vy * 0.5 - dy * 8);
+      if (a.hist) a.hist.kind = 'collide';
+      if (c.hist) c.hist.kind = 'collide';
+      flash('Mid-air collision!', '#ff6b6b');
+      return;
+    }
+  }
+}
+
+function updateHands(dt) {
+  const K = 900, C = 60, sub = 4, h_ = dt / sub;
+  for (const hd of sim.hands) {
+    let inc = null;
+    for (const b of sim.balls) if (b.state === 'air' && b.to === hd.h && (!inc || b.t1 < inc.t1)) inc = b;
+    const tau = inc ? inc.t1 - sim.time : 99;
+    let tx, ty;
+    if (tau < G.approach) { tx = hd.side * G.outX; ty = 0; }
+    else if (hd.held.length) { tx = hd.side * G.inX; ty = -G.dip * 0.6; }
+    else { tx = hd.side * (G.inX + G.outX) / 2; ty = G.lift * 0.5; }
+    for (let i = 0; i < sub; i++) {
+      hd.vx += (K * (tx - hd.x) - C * hd.vx) * h_;
+      hd.vy += (K * (ty - hd.y) - C * hd.vy) * h_;
+      hd.x += hd.vx * h_; hd.y += hd.vy * h_;
+    }
+  }
+}
+
+function step(dtReal) {
+  pad.poll();
+  if (sim.paused) return;
+  const dt = dtReal * settings.slowmo;
+  const t0 = sim.time;
+  sim.time += dt;
+
+  // beat clock (autopilot + beat guide)
+  const prev = Math.floor(sim.apPos);
+  sim.apPos += dt * settings.tempo;
+  const now = Math.floor(sim.apPos);
+
+  // catches in time order, interleaved with autopilot beats
+  const events = [];
+  for (const b of sim.balls) if (b.state === 'air' && b.t1 <= sim.time) events.push({ t: b.t1, kind: 'arrive', b });
+  for (let k = prev + 1; k <= now; k++) events.push({ t: sim.time - (sim.apPos - k) * beatSec(), kind: 'beat', k });
+  events.sort((a, b) => a.t - b.t);
+  for (const ev of events) {
+    if (ev.kind === 'arrive') { if (ev.b.state === 'air') arrive(ev.b); }
+    else {
+      const h = handOfBeat(ev.k);
+      sim.beatFlash[h] = ev.t;
+      if (settings.metronome) audio.click(h);
+      if (sim.mode === 'auto' && sim.hands[h].held.length) throwCmd(h, settings.balls, 'auto', ev.t);
+    }
+  }
+  for (const h of [R, L]) {
+    const p = sim.pending[h];
+    if (p && sim.time > p.until) { sim.pending[h] = null; flash(HAND_NAME[h] + ' hand was empty', '#8a93a3'); }
+  }
+  if (settings.midair) midairCheck();
+  updateHands(dt);
+  for (const b of sim.balls) {
+    if (b.state !== 'drop') continue;
+    b.vy -= settings.gravity * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.y < G.floorY + G.ballR) { b.y = G.floorY + G.ballR; b.vy = -b.vy * 0.45; b.vx *= 0.8; if (Math.abs(b.vy) < 0.25) b.vy = 0; }
+  }
+  if (sim.resetAt !== null && sim.time >= sim.resetAt) resetAutopilot(false);
+  sim.fade = Math.min(1, sim.fade + dt * 3);
+}
+
+/* ---------------- Input: keyboard ---------------- */
+const KEY_NEXT = {};
+for (let i = 0; i <= MAX_THROW; i++) { KEY_NEXT['Digit' + i] = i; KEY_NEXT['Numpad' + i] = i; }
+const KEY_HAND = {
+  KeyZ: [L, 0], KeyA: [L, 1], KeyS: [L, 2], KeyD: [L, 3], KeyF: [L, 4], KeyQ: [L, 5], KeyW: [L, 6], KeyE: [L, 7],
+  Slash: [R, 0], Semicolon: [R, 1], KeyL: [R, 2], KeyK: [R, 3], KeyJ: [R, 4], KeyP: [R, 5], KeyO: [R, 6], KeyI: [R, 7]
+};
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  audio.unlock();
+  if (e.code === 'Space') { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); togglePause(); return; }
+  if (e.code === 'Backspace') { e.preventDefault(); doReset(); return; }
+  if (e.repeat) return;
+  if (e.code === 'Minus' || e.code === 'NumpadSubtract') { setBalls(settings.balls - 1); return; }
+  if (e.code === 'Equal' || e.code === 'NumpadAdd') { setBalls(settings.balls + 1); return; }
+  if (sim.paused) return;
+  if (e.code in KEY_NEXT) { e.preventDefault(); throwCmd(1 - sim.lastThrowHand, KEY_NEXT[e.code], 'keys'); return; }
+  if (e.code in KEY_HAND) { e.preventDefault(); const [h, v] = KEY_HAND[e.code]; throwCmd(h, v, 'split'); }
+});
+
+/* ---------------- Input: gamepad (aim with stick, throw with trigger) ---------------- */
+const SECTOR_ORDER = [1, 3, 5, 7, 6, 4, 2, 0];
+const SECTORS = SECTOR_ORDER.map((v, i) => ({ v, a: -67.5 + i * 45, b: -22.5 + i * 45 }));
+const ANG_ON = 0.55, ANG_OFF = 0.3, ANG_HYST = 6, AIM_GRACE = 0.12;
+function inSector(sec, a, p) { for (const x of [a, a - 360, a + 360]) if (x >= sec.a - p && x < sec.b + p) return true; return false; }
+const pad = {
+  connected: false, gp: null, prev: [],
+  stick: [{ x: 0, y: 0 }, { x: 0, y: 0 }],
+  ang: [{ active: false, sector: null, offT: -9 }, { active: false, sector: null, offT: -9 }],
+  trigDown: [false, false],
+  aimValue(h) {                                    // what a throw from this hand would be right now
+    const A = this.ang[h];
+    if (A.sector && (A.active || performance.now() / 1000 - A.offT < AIM_GRACE)) return A.sector.v;
+    return settings.balls;
+  },
+  poll() {
+    const list = navigator.getGamepads ? navigator.getGamepads() : [];
+    let gp = null;
+    for (const g of list) if (g && g.connected) { gp = g; break; }
+    this.connected = !!gp; this.gp = gp;
+    if (!gp) return;
+    this.id = gp.id;
+    const val = i => (gp.buttons[i] ? gp.buttons[i].value : 0);
+    const down = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+    const ax = i => (gp.axes[i] || 0);
+    this.stick = [{ x: ax(2), y: ax(3) }, { x: ax(0), y: ax(1) }];
+    for (const h of [R, L]) this.aim(h);
+    const trig = [Math.max(val(7), down(5) ? 1 : 0), Math.max(val(6), down(4) ? 1 : 0)];   // [R: RT|RB, L: LT|LB]
+    for (const h of [R, L]) {
+      if (!this.trigDown[h] && trig[h] > 0.5) {
+        this.trigDown[h] = true;
+        audio.unlock();
+        if (!sim.paused) throwCmd(h, this.aimValue(h), 'pad');
+      } else if (this.trigDown[h] && trig[h] < 0.25) this.trigDown[h] = false;
+    }
+    const edge = (i, fn) => { const d = down(i); if (d && !this.prev[i]) fn(); this.prev[i] = d; };
+    edge(9, togglePause);
+    edge(8, doReset);
+  },
+  aim(h) {
+    const st = this.stick[h], A = this.ang[h];
+    const mag = Math.hypot(st.x, st.y);
+    if (mag > ANG_ON) {
+      const inward = h === R ? -st.x : st.x;
+      let a = Math.atan2(-st.y, inward) * 180 / Math.PI;
+      if (a < -67.5) a += 360;
+      let sec = A.sector;
+      if (!A.active || !sec || !inSector(sec, a, ANG_HYST)) sec = SECTORS.find(q => inSector(q, a, 0)) || sec;
+      if (sec !== A.sector || !A.active) { if (sec !== A.sector || !A.active) this.rumble(0.6, 25); }
+      A.sector = sec; A.active = true;
+    } else if (mag < ANG_OFF && A.active) { A.active = false; A.offT = performance.now() / 1000; }
+  },
+  rumble(weak, ms) {
+    if (!settings.rumble || !this.gp) return;
+    try {
+      const va = this.gp.vibrationActuator;
+      if (va && va.playEffect) { const r = va.playEffect('dual-rumble', { startDelay: 0, duration: ms, weakMagnitude: weak, strongMagnitude: weak * 0.3 }); if (r && r.catch) r.catch(() => {}); }
+    } catch (e) { /* unsupported */ }
+  }
+};
+window.addEventListener('gamepadconnected', () => flash('Gamepad connected', '#5ad19a'));
+
+/* ---------------- Audio (metronome) ---------------- */
+const audio = {
+  ctx: null,
+  unlock() { if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; } } if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); },
+  click(h) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.frequency.value = h === R ? 1500 : 1000;
+    g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t + 0.06);
+  }
+};
+
+/* ---------------- UI wiring ---------------- */
+function togglePause() { sim.paused = !sim.paused; $('#bPause').textContent = sim.paused ? 'Resume (Space)' : 'Pause (Space)'; }
+function doReset() { resetAutopilot(false); flash('Reset: autopilot ' + settings.balls + ' balls', '#5ad19a'); }
+function setBalls(n) { settings.balls = clamp(n, 1, MAX_THROW); renderBallBtns(); doReset(); }
+function renderBallBtns() {
+  let h = '';
+  for (let i = 1; i <= MAX_THROW; i++) h += `<button data-n="${i}" class="${i === settings.balls ? 'on' : ''}">${i}</button>`;
+  $('#ballBtns').innerHTML = h;
+}
+$('#ballBtns').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { setBalls(parseInt(b.dataset.n, 10)); b.blur(); } });
+$('#bPause').onclick = togglePause;
+$('#bReset').onclick = doReset;
+function bindSlider(id, vid, key, fmt) {
+  const el = $(id), out = $(vid);
+  el.value = settings[key]; out.textContent = fmt(settings[key]);
+  el.addEventListener('input', () => { settings[key] = parseFloat(el.value); out.textContent = fmt(settings[key]); });
+}
+bindSlider('#sTempo', '#vTempo', 'tempo', v => v.toFixed(1));
+bindSlider('#sDwell', '#vDwell', 'dwell', v => v.toFixed(2));
+bindSlider('#sGrav', '#vGrav', 'gravity', v => v.toFixed(1));
+bindSlider('#sSlow', '#vSlow', 'slowmo', v => v.toFixed(2) + '×');
+function bindCheck(id, key, after) {
+  const el = $(id); el.checked = settings[key];
+  el.addEventListener('change', () => { settings[key] = el.checked; if (key === 'metronome') audio.unlock(); if (after) after(); el.blur(); });
+}
+bindCheck('#cLadder', 'showLadder', () => resize());
+bindCheck('#cBeat', 'beatGuide'); bindCheck('#cMetro', 'metronome'); bindCheck('#cHud', 'showHud');
+bindCheck('#cZoom', 'autoZoom'); bindCheck('#cMid', 'midair'); bindCheck('#cDials', 'showDials'); bindCheck('#cRumble', 'rumble');
+renderBallBtns();
+
+let panelKey = '';
+function updatePanel() {
+  const inHand = sim.hands.map(h => h.held.length);
+  const air = sim.balls.filter(b => b.state === 'air').length;
+  const html = sim.mode === 'auto'
+    ? `<b style="color:var(--ok)">Autopilot</b> · ${settings.balls}-ball pattern<br><span style="color:var(--dim)">Make any throw to take over.</span>`
+    : `<b style="color:var(--acc)">You're juggling</b><br><span style="color:var(--dim)">Number keys throw next from <b style="color:${sim.lastThrowHand === R ? 'var(--L)' : 'var(--R)'}">${HAND_NAME[1 - sim.lastThrowHand]}</b> · in hands L ${inHand[L]} / R ${inHand[R]} · in air ${air}</span>`;
+  if (html !== panelKey) { panelKey = html; $('#modeBox').innerHTML = html; }
+  $('#padStatus').textContent = pad.connected ? 'Gamepad: ' + (pad.id || 'connected').slice(0, 48) : 'No gamepad detected. Press a button on it. (In an embedded preview it may not show up; open the file directly in a browser.)';
+}
+
+/* ---------------- Rendering ---------------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const LADDER_H = 130;
+function resize() {
+  const r = cv.parentElement.getBoundingClientRect();
+  DPR = window.devicePixelRatio || 1; W = r.width; H = r.height;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+}
+window.addEventListener('resize', resize);
+
+let camTop = 1.2;
+function updateCamera(dt) {
+  let target;
+  if (settings.autoZoom) {
+    let m = 0.9;
+    for (const b of sim.balls) if (b.state === 'air') m = Math.max(m, Math.max(b.y0, b.y1) + settings.gravity * b.T * b.T / 8);
+    target = m + 0.3;
+  } else { const T = (MAX_THROW - settings.dwell) * beatSec(); target = settings.gravity * T * T / 8 + 0.3; }
+  camTop += (target - camTop) * (1 - Math.exp(-dt * (target > camTop ? 4 : 1.2)));
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const ladH = settings.showLadder ? LADDER_H : 0, stageH = H - ladH;
+  const scale = Math.min(stageH / (camTop - G.viewBottom), W / 1.3);
+  const SX = x => W / 2 + x * scale, SY = y => stageH - (y - G.viewBottom) * scale;
+
+  const grd = ctx.createLinearGradient(0, 0, 0, stageH);
+  grd.addColorStop(0, '#171a21'); grd.addColorStop(1, '#101216');
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, W, stageH);
+
+  ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+  for (let v = 3; v <= MAX_THROW; v++) {
+    const T = (v - settings.dwell) * beatSec(), hgt = settings.gravity * T * T / 8;
+    if (hgt > camTop) break;
+    const y = SY(hgt);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillText(String(v), 8, y - 3);
+  }
+  ctx.strokeStyle = '#2f3540'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, SY(G.floorY)); ctx.lineTo(W, SY(G.floorY)); ctx.stroke();
+
+  // juggler
+  const hR = sim.hands[R], hL = sim.hands[L];
+  ctx.fillStyle = '#20242c';
+  ctx.beginPath(); ctx.arc(SX(0), SY(0.66), 0.1 * scale, 0, Math.PI * 2); ctx.fill();
+  roundRect(SX(-0.17), SY(0.48), 0.34 * scale, 1.0 * scale, 0.06 * scale); ctx.fill();
+  ctx.lineCap = 'round'; ctx.lineWidth = Math.max(4, 0.07 * scale); ctx.strokeStyle = '#272c35';
+  for (const hd of [hR, hL]) {
+    ctx.beginPath(); ctx.moveTo(SX(hd.side * 0.2), SY(0.42)); ctx.lineTo(SX(hd.side * 0.27), SY(0.02)); ctx.lineTo(SX(hd.x), SY(hd.y)); ctx.stroke();
+  }
+  // hands (+ beat guide pulse)
+  for (const hd of [hR, hL]) {
+    ctx.fillStyle = hd.h === R ? 'rgba(255,143,163,0.85)' : 'rgba(111,183,255,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(SX(hd.x), SY(hd.y) + Math.max(3, 0.03 * scale), Math.max(7, 0.06 * scale), Math.max(4, 0.03 * scale), 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (settings.beatGuide) {
+      const age = (sim.time - sim.beatFlash[hd.h]) / beatSec();
+      if (age >= 0 && age < 1) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.6 * (1 - age)})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(SX(throwPt(hd.h).x), SY(-0.02), Math.max(10, 0.06 * scale) + age * 14, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+  }
+  // balls
+  const rpx = Math.max(4.5, G.ballR * scale);
+  ctx.globalAlpha = sim.fade;
+  for (const b of sim.balls) {
+    const p = ballPos(b, sim.time);
+    ctx.fillStyle = COLORS[b.id % COLORS.length];
+    ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), rpx, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  if (settings.showHud) {
+    ctx.textAlign = 'left';
+    if (sim.mode === 'auto') {
+      ctx.fillStyle = '#5ad19a'; ctx.font = 'bold 18px system-ui'; ctx.fillText('AUTOPILOT', 16, 30);
+      ctx.fillStyle = '#8a93a3'; ctx.font = '12px system-ui'; ctx.fillText('make any throw to take over', 16, 48);
+    } else {
+      ctx.fillStyle = '#ffb347'; ctx.font = 'bold 18px system-ui'; ctx.fillText("YOU'RE JUGGLING", 16, 30);
+      ctx.fillStyle = '#8a93a3'; ctx.font = '12px system-ui';
+      ctx.fillText('number keys → ' + HAND_NAME[1 - sim.lastThrowHand] + ' hand next', 16, 48);
+    }
+    for (const hd of [hR, hL]) {
+      if (sim.pending[hd.h]) {
+        ctx.fillStyle = '#ffb347'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText(String(sim.pending[hd.h].v), SX(hd.x), SY(hd.y) + 26);
+      }
+    }
+  }
+  if (sim.msg) {
+    const age = (performance.now() - sim.msg.t) / 1000;
+    if (age > 1.6) sim.msg = null;
+    else { ctx.globalAlpha = Math.min(1, 1.6 - age); ctx.textAlign = 'center'; ctx.font = 'bold 18px system-ui'; ctx.fillStyle = sim.msg.color; ctx.fillText(sim.msg.text, W / 2, 36); ctx.globalAlpha = 1; }
+  }
+  if (pad.connected && settings.showDials) {
+    const r = Math.max(42, Math.min(62, stageH * 0.09)), gap = 14, cy = stageH - 26 - r;
+    drawDial(L, W / 2 - r - 6 - gap / 2, cy, r);
+    drawDial(R, W / 2 + r + 6 + gap / 2, cy, r);
+  }
+  if (sim.paused) {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, W, stageH);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#e6e8ec'; ctx.font = 'bold 22px system-ui'; ctx.fillText('Paused', W / 2, stageH / 2);
+  }
+  if (settings.showLadder) drawLadder(stageH, ladH);
+}
+
+function drawDial(h, cx, cy, r) {
+  const dir = h === R ? -1 : 1;
+  const pt = (deg, rad) => [cx + dir * Math.cos(deg * Math.PI / 180) * rad, cy - Math.sin(deg * Math.PI / 180) * rad];
+  const A = pad.ang[h], aim = pad.aimValue(h), aiming = A.sector && aim === A.sector.v && (A.active || performance.now() / 1000 - A.offT < AIM_GRACE);
+  ctx.save();
+  ctx.fillStyle = 'rgba(16,18,22,0.75)'; ctx.beginPath(); ctx.arc(cx, cy, r + 6, 0, Math.PI * 2); ctx.fill();
+  for (const sec of SECTORS) {
+    const isCur = aiming && A.sector === sec;
+    const base = sec.v === 0 ? 'rgba(255,107,107,' : sec.v % 2 ? 'rgba(255,179,71,' : 'rgba(127,178,255,';
+    ctx.fillStyle = base + (isCur ? 0.8 : 0.16) + ')';
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    for (let d = sec.a; d < sec.b; d += 3) { const [x, y] = pt(d, r); ctx.lineTo(x, y); }
+    { const [x, y] = pt(sec.b, r); ctx.lineTo(x, y); }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(19,21,26,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
+    const [lx, ly] = pt((sec.a + sec.b) / 2, r * 0.72);
+    ctx.fillStyle = isCur ? '#ffffff' : 'rgba(230,232,236,0.75)';
+    ctx.font = 'bold ' + Math.round(r * 0.27) + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(sec.v), lx, ly);
+  }
+  ctx.fillStyle = aiming ? 'rgba(30,33,40,0.9)' : 'rgba(58,51,32,0.95)';
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = aiming ? '#8a93a3' : '#ffb347'; ctx.font = 'bold ' + Math.round(r * 0.3) + 'px system-ui';
+  ctx.fillText(String(aiming ? aim : settings.balls), cx, cy + 1);
+  const st = pad.stick[h];
+  ctx.fillStyle = A.active ? '#ffb347' : '#e6e8ec';
+  ctx.beginPath(); ctx.arc(cx + st.x * r, cy + st.y * r, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = h === R ? '#ff8fa3' : '#6fb7ff'; ctx.font = 'bold 12px system-ui'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(HAND_NAME[h] + (pad.trigDown[h] ? ' ● throw' : ' stick'), cx, cy + r + 18);
+  ctx.restore();
+}
+
+function drawLadder(top, h) {
+  ctx.fillStyle = '#181b21'; ctx.fillRect(0, top, W, h);
+  ctx.strokeStyle = '#2b303a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, top + 0.5); ctx.lineTo(W, top + 0.5); ctx.stroke();
+  const B = beatSec(), back = 10 * B, ahead = 10 * B, pps = W / (back + ahead), nowX = back * pps;
+  const X = t => nowX + (t - sim.time) * pps;
+  const rowY = hh => (hh === R ? top + 40 : top + h - 34);
+  ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#ff8fa3'; ctx.fillText('R', 6, rowY(R) + 4);
+  ctx.fillStyle = '#6fb7ff'; ctx.fillText('L', 6, rowY(L) + 4);
+  ctx.strokeStyle = '#262a32';
+  for (const hh of [R, L]) { ctx.beginPath(); ctx.moveTo(20, rowY(hh)); ctx.lineTo(W, rowY(hh)); ctx.stroke(); }
+  if (settings.beatGuide) {
+    for (let k = Math.floor(sim.apPos - 10); k <= Math.ceil(sim.apPos + 10); k++) {
+      const x = X(sim.time + (k - sim.apPos) * B); if (x < 18) continue;
+      ctx.fillStyle = '#3a404c'; ctx.beginPath(); ctx.arc(x, rowY(handOfBeat(k)), 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.setLineDash([3, 4]); ctx.strokeStyle = '#5ad19a55';
+  for (const rt of sim.resetTimes) { const x = X(rt); if (x > 0 && x < W) { ctx.beginPath(); ctx.moveTo(x, top + 6); ctx.lineTo(x, top + h - 6); ctx.stroke(); } }
+  ctx.setLineDash([]);
+  ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+  for (const e of sim.history) {
+    const x1 = X(e.t0), x2 = X(e.t1);
+    if (x2 < 0 || x1 > W + 4) continue;
+    const y1 = rowY(e.hand), y2 = rowY(e.toHand);
+    if (e.kind === 'empty') { ctx.strokeStyle = '#555c69'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x1, y1, 4, 0, Math.PI * 2); ctx.stroke(); continue; }
+    if (e.kind === 'drop') {
+      ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x1 - 5, y1 - 5); ctx.lineTo(x1 + 5, y1 + 5); ctx.moveTo(x1 + 5, y1 - 5); ctx.lineTo(x1 - 5, y1 + 5); ctx.stroke(); continue;
+    }
+    let color = e.src === 'auto' ? '#8a93a3' : '#ffb347';
+    if (e.kind === 'hold') color = '#7fb2ff';
+    if (e.kind === 'collide') color = '#ff6b6b';
+    if (e.cut) color += '44';
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, y1);
+    if (e.hand === e.toHand) { const bulge = Math.min(32, 8 + e.v * 4) * (e.hand === R ? -1 : 1); ctx.quadraticCurveTo((x1 + x2) / 2, y1 + bulge * 1.6, x2, y2); }
+    else ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.fillStyle = color; ctx.fillText(String(e.v), x1, e.hand === R ? y1 - 10 : y1 + 18);
+  }
+  ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(nowX, top + 6); ctx.lineTo(nowX, top + h - 6); ctx.stroke();
+  ctx.fillStyle = '#8a93a3'; ctx.font = '10px system-ui'; ctx.textAlign = 'left'; ctx.fillText('past', 24, top + h - 8);
+  ctx.textAlign = 'right'; ctx.fillText('in flight', W - 6, top + h - 8);
+}
+
+/* ---------------- Main loop ---------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  step(dt); updateCamera(dt); draw(); updatePanel();
+  requestAnimationFrame(frame);
+}
+resize();
+resetAutopilot(true);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
