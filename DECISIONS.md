@@ -3,6 +3,14 @@
 Settled design decisions. Newest first within each section. If code and this file disagree,
 fix one of them on purpose.
 
+## Phone (Nov 18 2026)
+- **On-screen number line** under the stage: L 1–6 and R 1–6. A tap = that hand's number key
+  (level 1: sets that hand's next value; levels 2+: throws now). Shown by default on touch
+  screens (`pointer: coarse`), toggle "On-screen number buttons". No flip/pickup/pirouette on
+  touch yet.
+- **Narrow screens** (≤ 820 px): stage on top (72vh), settings scroll below; the number line
+  stacks into two rows under 600 px.
+
 ## Changes after first play (Nov 15 2026)
 - **Second controller scheme, "Buttons"** (the dial stays, chosen in the panel; saved). Pressing a
   value button throws it (level 1: sets that hand's next value). D-pad = left hand, face buttons =

@@ -192,6 +192,26 @@ $('#sView').addEventListener('change', () => $('#sView').blur());
 syncView();
 check('#cDials', () => ui.showDials, v => { ui.showDials = v; });
 check('#cRumble', () => ui.rumble, v => { ui.rumble = v; gamepad.rumbleOn = v; });
+// On-screen number line: L 1–6 and R 1–6, same as that hand's number keys.
+const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+if (ui.touchBar === undefined) ui.touchBar = coarse;
+for (const g of document.querySelectorAll('.tgrp')) {
+  for (let v = 1; v <= 6; v++) {
+    const b = document.createElement('button');
+    b.textContent = v; b.dataset.v = v;
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      audio.unlock();
+      router.action(g.dataset.h + v, true, 'touch');
+      b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 120);
+    });
+    b.addEventListener('contextmenu', e => e.preventDefault());
+    g.appendChild(b);
+  }
+}
+function syncTouch() { $('#touchbar').classList.toggle('hide', !ui.touchBar); renderer.resize(); }
+check('#cTouch', () => ui.touchBar, v => { ui.touchBar = v; syncTouch(); });
+syncTouch();
 check('#cMid', () => cfg.midairCollisions, v => { cfg.midairCollisions = v; if (engine) engine.updateConfig({ midairCollisions: v }); });
 check('#cSwap', () => cfg.swapThrowFlip, v => { cfg.swapThrowFlip = v; if (engine) engine.updateConfig({ swapThrowFlip: v }); renderControls(); });
 
